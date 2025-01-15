@@ -1,0 +1,170 @@
+---
+- name: VM playbook
+  hosts: localhost
+  gather_facts: false
+  collections:
+    - nutanix.ncp
+  module_defaults:
+    group/nutanix.ncp.ntnx:
+      nutanix_host: "<Prism Central IP>"
+      nutanix_username: "<Prism Central Username>"
+      nutanix_password: "<Prism Central Password>"
+      validate_certs: true
+  
+  tasks:
+  - name: Setting Variables
+    set_fact:
+        cluster_name: "<Cluster Name>"
+        script_path: "./cloudinit.yml"
+        subnet_name: "<Subnet Name>"
+        image_name: "<Image Name>"
+        user: "<VM User>"
+        password: "<VM User Password>"
+        fqdn: "<VM FQDN>"
+        env_type: "<Environment category value>"
+        vm_name: "<VM Name>"
+        vm_vpu: <vCPU number>
+        vm_ram: <RAM in GB>
+        vm_os_disksize: <OS Disk Size in GB>
+        vm_data_disksize: <Data Disk Size in GB>
+        storage_container: "<Storage Container Name>"         
+
+  - name: Get category UUID
+    ntnx_categories_info_v2:
+      expand: associations
+      filter: "key eq 'Environment' and value eq '{{ env_type }}'"
+    register: myCategory
+
+  - name: Get cluster UUID
+    ntnx_clusters_info_v2:
+      filter: "name eq '{{ cluster_name }}'"
+    register: myCluster
+
+  - name: Get image UUID
+    ntnx_images_info_v2:
+      filter: "name eq '{{ image_name }}'"
+    register: myImage
+
+  - name: Get storage container UUID
+    ntnx_storage_containers_info_v2:
+      filter: "name eq '{{ storage_container }}'"
+    register: myStorageContainer
+
+  - name: Get subnet UUID
+    ntnx_subnets_info_v2:
+      filter: "name eq '{{ subnet_name }}'"
+    register: mySubnet
+
+  - name: Create Cloud-init Script file
+    copy:
+      dest: "cloud_init.yml"
+      content: |
+        #cloud-config 
+        users:
+          - name: {{ user }}
+            sudo: ['ALL=(ALL) NOPASSWD:ALL']
+        chpasswd:
+          list: |
+            {{ user }}:{{ password }}
+          expire: False
+        fqdn: "{{ fqdn }}"
+        ssh_pwauth: True
+
+  - name: create Vm
+    ntnx_vms_v2:
+      state: present
+      name: "{{ vm_name}}"
+
+      # Compute 
+      num_sockets: "{{ vm_vpu }}"
+      num_cores_per_socket: 1
+      memory_size_bytes: "{{ vm_ram * 1024 * 1024 * 1024}}"
+
+      # Metadata
+      description: "ansible_vm_description"
+      categories: 
+        - ext_id: "{{ myCategory.response[0].ext_id }}"
+
+      # Location
+      cluster:
+        ext_id: "{{ myCluster.response[0].ext_id }}"
+
+      # Networks
+      nics:
+        - network_info:
+            subnet:
+              ext_id: "{{ mySubnet.response[0].ext_id }}"
+
+      # Storage
+      disks:
+        - backing_info:
+            vm_disk:
+              disk_size_bytes: "{{ vm_os_disksize * 1024 * 1024 * 1024 }}"
+              data_source:
+                reference:
+                  image_reference:
+                    image_ext_id: "{{ myImage.response[0].ext_id }}"
+        - backing_info:
+            vm_disk:
+              disk_size_bytes: "{{ vm_data_disksize * 1024 * 1024 * 1024 }}"
+              storage_container:
+                ext_id: "{{ myStorageContainer.response[0].container_ext_id }}"
+      cd_roms:
+        - disk_address:
+            bus_type: IDE
+      
+      # Guest Customization
+      guest_customization:
+        config:
+          cloudinit:
+            datasource_type: CONFIG_DRIVE_V2
+            cloud_init_script:
+              user_data:
+                value: "{{ lookup('file', 'cloud_init.yml') | b64encode }}"
+
+      wait: true
+    register: myVM
+
+  - name: output of vm created
+    debug:
+      msg: '{{ myVM }}'
+
+  - name: Power On the VM
+    ntnx_vms_power_actions_v2:
+      state: power_on
+      wait: true
+      ext_id: "{{ myVM.ext_id }}"
+
+  - name: Pause for 1 mn to wait VM startup
+    ansible.builtin.pause:
+      seconds: 60
+
+
+  - name: Install NGT
+    ntnx_vms_ngt_v2:
+      state: present
+      ext_id: "{{ myVM.ext_id }}"
+      capabilities:
+            - SELF_SERVICE_RESTORE
+      credential:
+        username: "{{ user }}"
+        password: "{{ password }}"
+      reboot_preference:
+        schedule_type: "IMMEDIATE"
+      wait: true
+
+
+  - name: Fetch NGT config after installing NGT in VM with reboot preference set to IMMEDIATE
+    nutanix.ncp.ntnx_vms_ngt_info_v2:
+      ext_id: "{{ myVM.ext_id }}"
+    register: ngt_output
+    ignore_errors: true
+
+  - name: output for NGT
+    debug:
+      msg: '{{ ngt_output }}'
+
+  # - name: delete VM
+  #   ntnx_vms:
+  #     state: absent
+  #     vm_uuid: "{{output.vm_uuid}}""
