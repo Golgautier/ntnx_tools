@@ -9,6 +9,6 @@ export Vm info in a csv file
 - create a python virtual enc, avtivate it then run `pip install -r requirements.txt`
 
 ### Usage
-- `pyhton ExportVM.py` 
+- `python ExportVM.py` 
 - use `-v3` parameter to use v3 APIs
 
