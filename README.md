@@ -5,6 +5,8 @@
 ## API
  - ExportVM
    - python script to export VM info. Works with API v3 and v4 (no SDK)
+ - BulkCategoryAssignment
+   - python script to assign categories to VM in bulk mode
 ## Calm directory
 - LCM_Repo_VM_Darksite
    - Calm BP in json format (Use import BP under Calm, no passphrase)
