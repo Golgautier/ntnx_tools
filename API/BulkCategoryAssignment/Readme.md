@@ -1,4 +1,4 @@
-# BulkCatAssignment
+# BulkCategoryAssignment
 
 ## Purpose
 Assign categories to VM fron a csv file.
@@ -15,7 +15,7 @@ Assign categories to VM fron a csv file.
 Note : Columm header will be used as the cat key, case value will represent the category value.
 
 ### Usage
-- `python.py <CSV file>` 
+- `python BulkCatAssignment.py <CSV file>` 
 
 ## Current limitations 
 - The scripte does not check assignment result, it just initialize the assigment
